@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import ModelViewer from '../components/ModelViewer'
+import FileUploader from '../components/FileUploader'
 
 interface Model {
   id: string
@@ -8,10 +10,12 @@ interface Model {
   thumbnail: string
   uploadDate: string
   status: 'uploaded' | 'processing' | 'ready'
+  file?: File
+  url?: string
 }
 
 const ModelManagement = () => {
-  const [models] = useState<Model[]>([
+  const [models, setModels] = useState<Model[]>([
     {
       id: '1',
       name: '캐릭터_001.glb',
@@ -41,28 +45,48 @@ const ModelManagement = () => {
     }
   ])
 
-  const [dragActive, setDragActive] = useState(false)
+  const [selectedModel, setSelectedModel] = useState<Model | null>(null)
   const [showUploadModal, setShowUploadModal] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true)
-    } else if (e.type === 'dragleave') {
-      setDragActive(false)
+  const handleFileUpload = (file: File, url: string) => {
+    const fileFormat = file.name.split('.').pop()?.toUpperCase() || 'UNKNOWN'
+    const fileSize = (file.size / (1024 * 1024)).toFixed(2) + 'MB'
+
+    const newModel: Model = {
+      id: Date.now().toString(),
+      name: file.name,
+      format: fileFormat,
+      size: fileSize,
+      thumbnail: getFormatIcon(fileFormat),
+      uploadDate: new Date().toISOString().split('T')[0],
+      status: 'ready',
+      file: file,
+      url: url
     }
+
+    setModels(prev => [newModel, ...prev])
+    setSelectedModel(newModel)
+    setUploadError(null)
+    console.log('파일 업로드 완료:', newModel)
   }
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragActive(false)
+  const handleUploadError = (error: string) => {
+    setUploadError(error)
+    console.error('업로드 오류:', error)
+  }
 
-    const files = e.dataTransfer.files
-    if (files && files[0]) {
-      console.log('파일 업로드:', files[0].name)
-      // 실제 업로드 로직
+  const getFormatIcon = (format: string) => {
+    switch (format.toLowerCase()) {
+      case 'glb':
+      case 'gltf':
+        return '🎯'
+      case 'fbx':
+        return '🤖'
+      case 'obj':
+        return '🎨'
+      default:
+        return '📁'
     }
   }
 
@@ -98,34 +122,32 @@ const ModelManagement = () => {
 
       {/* 업로드 영역 */}
       <div className="mb-8">
-        <div
-          className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors duration-200 ${
-            dragActive
-              ? 'border-primary-400 bg-primary-50'
-              : 'border-gray-300 hover:border-gray-400'
-          }`}
-          onDragEnter={handleDrag}
-          onDragLeave={handleDrag}
-          onDragOver={handleDrag}
-          onDrop={handleDrop}
+        <FileUploader
+          accept=".glb,.gltf,.fbx,.obj,model/gltf-binary,application/octet-stream"
+          onFileUpload={handleFileUpload}
+          onError={handleUploadError}
+          maxSize={100 * 1024 * 1024} // 100MB
         >
-          <div className="text-4xl mb-4">📁</div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            3D 모델을 업로드하세요
-          </h3>
-          <p className="text-gray-600 mb-4">
-            파일을 드래그하거나 클릭하여 업로드하세요
-          </p>
-          <p className="text-sm text-gray-500 mb-4">
-            지원 형식: GLB, FBX, OBJ (최대 100MB)
-          </p>
-          <button
-            onClick={() => setShowUploadModal(true)}
-            className="btn-primary"
-          >
-            파일 선택
-          </button>
-        </div>
+          <div>
+            <div className="text-4xl mb-4">🎯</div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              3D 모델을 업로드하세요
+            </h3>
+            <p className="text-gray-600 mb-4">
+              파일을 드래그하거나 클릭하여 업로드하세요
+            </p>
+            <p className="text-sm text-gray-500">
+              지원 형식: GLB, GLTF, FBX, OBJ (최대 100MB)
+            </p>
+          </div>
+        </FileUploader>
+
+        {/* 업로드 오류 표시 */}
+        {uploadError && (
+          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md">
+            <p className="text-red-800 text-sm">❌ {uploadError}</p>
+          </div>
+        )}
       </div>
 
       {/* 모델 목록 */}
@@ -160,7 +182,13 @@ const ModelManagement = () => {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {models.map((model) => (
-                <tr key={model.id} className="hover:bg-gray-50">
+                <tr
+                  key={model.id}
+                  className={`hover:bg-gray-50 cursor-pointer ${
+                    selectedModel?.id === model.id ? 'bg-primary-50' : ''
+                  }`}
+                  onClick={() => setSelectedModel(model)}
+                >
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="flex-shrink-0 h-10 w-10">
@@ -211,34 +239,80 @@ const ModelManagement = () => {
 
       {/* 3D 뷰어 섹션 */}
       <div className="mt-8 bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">3D 모델 미리보기</h2>
-        <div className="bg-gray-100 rounded-lg h-96 flex items-center justify-center">
-          <div className="text-center">
-            <div className="text-6xl mb-4">🎨</div>
-            <p className="text-gray-600">
-              모델을 선택하면 여기에서 미리보기가 표시됩니다
-            </p>
-            <p className="text-sm text-gray-500 mt-2">
-              Three.js 3D 뷰어가 여기에 구현됩니다
-            </p>
-          </div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold text-gray-900">3D 모델 미리보기</h2>
+          {selectedModel && (
+            <div className="text-sm text-gray-600">
+              {selectedModel.name} ({selectedModel.format})
+            </div>
+          )}
+        </div>
+
+        <div className="h-96 rounded-lg overflow-hidden">
+          {selectedModel?.url ? (
+            <ModelViewer
+              modelUrl={selectedModel.url}
+              modelType={selectedModel.format.toLowerCase() as 'glb' | 'fbx' | 'obj'}
+              autoRotate={false}
+              onModelLoad={(model) => {
+                console.log('3D 모델 로드 완료:', model)
+              }}
+            />
+          ) : (
+            <div className="bg-gray-100 rounded-lg h-full flex items-center justify-center">
+              <div className="text-center">
+                <div className="text-6xl mb-4">🎯</div>
+                <p className="text-gray-600">
+                  모델을 선택하거나 업로드하면 여기에서 미리보기가 표시됩니다
+                </p>
+                <p className="text-sm text-gray-500 mt-2">
+                  GLB, FBX, OBJ 파일을 지원합니다
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 뷰어 컨트롤 */}
         <div className="mt-4 flex flex-wrap gap-2">
-          <button className="btn-secondary text-sm">
-            🔄 회전
+          <button className="btn-secondary text-sm" disabled={!selectedModel}>
+            🔄 자동 회전
           </button>
-          <button className="btn-secondary text-sm">
-            🔍 확대/축소
+          <button className="btn-secondary text-sm" disabled={!selectedModel}>
+            🔍 확대/축소 리셋
           </button>
-          <button className="btn-secondary text-sm">
-            💡 조명
+          <button className="btn-secondary text-sm" disabled={!selectedModel}>
+            💡 조명 조절
           </button>
-          <button className="btn-secondary text-sm">
+          <button className="btn-secondary text-sm" disabled={!selectedModel}>
             📸 스크린샷
           </button>
         </div>
+
+        {/* 모델 정보 */}
+        {selectedModel && (
+          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+            <h3 className="text-sm font-medium text-gray-900 mb-2">모델 정보</h3>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-gray-500">파일명:</span>
+                <p className="font-medium">{selectedModel.name}</p>
+              </div>
+              <div>
+                <span className="text-gray-500">형식:</span>
+                <p className="font-medium">{selectedModel.format}</p>
+              </div>
+              <div>
+                <span className="text-gray-500">크기:</span>
+                <p className="font-medium">{selectedModel.size}</p>
+              </div>
+              <div>
+                <span className="text-gray-500">업로드일:</span>
+                <p className="font-medium">{selectedModel.uploadDate}</p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 업로드 모달 */}

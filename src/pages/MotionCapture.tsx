@@ -1,12 +1,16 @@
 import { useState, useRef } from 'react'
+import MotionCaptureComponent from '../components/MotionCapture'
+import ModelViewer from '../components/ModelViewer'
 
 const MotionCapture = () => {
   const [isRecording, setIsRecording] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
-  const [capturedMotion, setCapturedMotion] = useState<string | null>(null)
+  const [capturedMotion, setCapturedMotion] = useState<any[] | null>(null)
   const [selectedModel, setSelectedModel] = useState('')
   const [step, setStep] = useState(1) // 1: 준비, 2: 녹화, 3: 처리, 4: 결과
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const [motionData, setMotionData] = useState<any[]>([])
+  const [captureError, setCaptureError] = useState<string | null>(null)
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const models = [
     { id: '1', name: '캐릭터_001.glb', thumbnail: '🧍‍♂️' },
@@ -15,33 +19,59 @@ const MotionCapture = () => {
   ]
 
   const startRecording = () => {
+    if (!selectedModel) {
+      setCaptureError('모델을 먼저 선택해주세요.')
+      return
+    }
+
     setIsRecording(true)
     setStep(2)
-    // 실제 웹캠 접근 로직
-    navigator.mediaDevices.getUserMedia({ video: true })
-      .then(stream => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-        }
-      })
-      .catch(err => console.error('카메라 접근 오류:', err))
+    setRecordingTime(0)
+    setMotionData([])
+    setCaptureError(null)
+
+    // 녹화 시간 카운터
+    recordingIntervalRef.current = setInterval(() => {
+      setRecordingTime(prev => prev + 1)
+    }, 1000)
   }
 
   const stopRecording = () => {
     setIsRecording(false)
     setStep(3)
-    setCapturedMotion('recorded_motion_data')
 
-    // 실제 녹화 중지 로직
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream
-      stream.getTracks().forEach(track => track.stop())
+    // 타이머 정리
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current)
+      recordingIntervalRef.current = null
     }
 
-    // 처리 시뮬레이션
+    // 모션 데이터 처리 시뮬레이션
     setTimeout(() => {
-      setStep(4)
-    }, 3000)
+      if (motionData.length > 0) {
+        setCapturedMotion(motionData)
+        setStep(4)
+      } else {
+        setCaptureError('충분한 모션 데이터가 캡처되지 않았습니다.')
+        setStep(1)
+      }
+    }, 2000)
+  }
+
+  // 포즈 감지 콜백
+  const handlePoseDetected = (landmarks: any[]) => {
+    if (isRecording && landmarks.length > 0) {
+      setMotionData(prev => [...prev, {
+        timestamp: Date.now(),
+        landmarks: landmarks
+      }])
+    }
+  }
+
+  // 캡처 오류 콜백
+  const handleCaptureError = (error: string) => {
+    setCaptureError(error)
+    console.error('Motion capture error:', error)
   }
 
   const resetCapture = () => {
@@ -109,39 +139,26 @@ const MotionCapture = () => {
 
             <div className="bg-gray-900 rounded-lg overflow-hidden relative">
               {step >= 2 ? (
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  muted
-                  className="w-full h-64 object-cover"
-                />
+                <div className="h-64">
+                  <MotionCaptureComponent
+                    isRecording={isRecording}
+                    onPoseDetected={handlePoseDetected}
+                    onError={handleCaptureError}
+                  />
+                </div>
               ) : (
                 <div className="h-64 flex items-center justify-center">
                   <div className="text-center text-white">
                     <div className="text-4xl mb-4">📷</div>
                     <p>카메라가 준비되었습니다</p>
                     <p className="text-sm text-gray-300 mt-2">
-                      녹화를 시작하려면 아래 버튼을 클릭하세요
+                      모델을 선택하고 녹화를 시작하세요
                     </p>
-                  </div>
-                </div>
-              )}
-
-              {/* 녹화 시간 표시 */}
-              {isRecording && (
-                <div className="absolute top-4 left-4 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-semibold flex items-center">
-                  <div className="w-2 h-2 bg-white rounded-full mr-2 animate-pulse"></div>
-                  REC {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
-                </div>
-              )}
-
-              {/* 포즈 가이드라인 */}
-              {step >= 2 && (
-                <div className="absolute inset-0 pointer-events-none">
-                  <div className="absolute inset-4 border-2 border-white/30 rounded-lg"></div>
-                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-                    <div className="w-1 h-16 bg-white/30"></div>
-                    <div className="w-16 h-1 bg-white/30 absolute top-8 left-1/2 transform -translate-x-1/2 -translate-y-1/2"></div>
+                    {captureError && (
+                      <p className="text-red-400 text-sm mt-2">
+                        ⚠️ {captureError}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -280,16 +297,27 @@ const MotionCapture = () => {
               <h2 className="text-xl font-semibold text-gray-900 mb-4">모션 적용 결과</h2>
 
               {/* 3D 뷰어 */}
-              <div className="bg-gray-100 rounded-lg h-64 flex items-center justify-center mb-4">
-                <div className="text-center">
-                  <div className="text-6xl mb-2">
-                    {models.find(m => m.id === selectedModel)?.thumbnail}
+              <div className="bg-gray-100 rounded-lg h-64 mb-4 overflow-hidden">
+                {capturedMotion ? (
+                  <ModelViewer
+                    autoRotate={true}
+                    onModelLoad={(model) => {
+                      console.log('모션 적용된 모델 로드:', model)
+                    }}
+                  />
+                ) : (
+                  <div className="h-full flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="text-6xl mb-2">
+                        {models.find(m => m.id === selectedModel)?.thumbnail}
+                      </div>
+                      <p className="text-gray-600">모션이 적용된 3D 모델</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {capturedMotion ? '모션 데이터 적용 중...' : '모션 캡처를 완료하세요'}
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-gray-600">모션이 적용된 3D 모델</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Three.js 뷰어로 실시간 미리보기
-                  </p>
-                </div>
+                )}
               </div>
 
               {/* 뷰어 컨트롤 */}
