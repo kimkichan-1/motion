@@ -1,0 +1,10 @@
+{
+  "name": "3D Motion Platform",
+  "short_name": "3DMotion",
+  "description": "웹 기반 3D 모션 캡처 및 적용 플랫폼",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3b82f6",
+  "icons": []
+}
