@@ -1,0 +1,148 @@
+.App {
+  text-align: center;
+  min-height: 100vh;
+  background-color: #1a1a1a;
+  color: white;
+}
+
+.App-header {
+  background-color: #282c34;
+  padding: 20px;
+  border-bottom: 2px solid #61dafb;
+}
+
+.App-header h1 {
+  margin: 0 0 20px 0;
+  color: #61dafb;
+  font-size: 2rem;
+}
+
+.nav-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.nav-buttons button {
+  padding: 10px 20px;
+  border: 2px solid #61dafb;
+  background-color: transparent;
+  color: #61dafb;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: bold;
+}
+
+.nav-buttons button:hover:not(:disabled) {
+  background-color: #61dafb;
+  color: #282c34;
+}
+
+.nav-buttons button.active {
+  background-color: #61dafb;
+  color: #282c34;
+}
+
+.nav-buttons button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.reset-button {
+  padding: 8px 16px;
+  border: 1px solid #ff6b6b;
+  background-color: transparent;
+  color: #ff6b6b;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.reset-button:hover {
+  background-color: #ff6b6b;
+  color: white;
+}
+
+.App-main {
+  padding: 20px;
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.step-indicator {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 40px;
+  margin: 20px 0;
+  padding: 20px;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+
+.step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 15px;
+  right: -20px;
+  width: 40px;
+  height: 2px;
+  background-color: #444;
+  z-index: 1;
+}
+
+.step.completed:not(:last-child)::after {
+  background-color: #61dafb;
+}
+
+.step-number {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  margin-bottom: 8px;
+  background-color: #444;
+  color: #888;
+  border: 2px solid #444;
+  z-index: 2;
+  position: relative;
+}
+
+.step.active .step-number {
+  background-color: #61dafb;
+  color: #1a1a1a;
+  border-color: #61dafb;
+}
+
+.step.completed .step-number {
+  background-color: #61dafb;
+  color: #1a1a1a;
+  border-color: #61dafb;
+}
+
+.step-title {
+  font-size: 0.9rem;
+  color: #888;
+  text-align: center;
+}
+
+.step.active .step-title {
+  color: #61dafb;
+  font-weight: bold;
+}
+
+.step.completed .step-title {
+  color: #61dafb;
+}
