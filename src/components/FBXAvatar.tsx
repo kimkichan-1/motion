@@ -42,40 +42,68 @@ export const FBXAvatar: React.FC<FBXAvatarProps> = ({ poseData, modelPath }) => 
     if (!groupRef.current) return;
 
     const defaultAvatar = new THREE.Group();
-    const meshes: { [key: string]: THREE.Mesh } = {};
 
-    // Create basic stick figure with proper bone mapping names
-    const bodyParts = [
-      { name: 'head', position: [0, 1.7, 0], size: [0.2, 0.2, 0.2], color: '#ff6b6b' },
-      { name: 'spine', position: [0, 1, 0], size: [0.3, 0.6, 0.15], color: '#4ecdc4' },
-      { name: 'left_shoulder', position: [-0.5, 1.3, 0], size: [0.4, 0.1, 0.1], color: '#45b7d1' },
-      { name: 'right_shoulder', position: [0.5, 1.3, 0], size: [0.4, 0.1, 0.1], color: '#45b7d1' },
-      { name: 'left_arm', position: [-0.8, 1.1, 0], size: [0.3, 0.1, 0.1], color: '#96ceb4' },
-      { name: 'right_arm', position: [0.8, 1.1, 0], size: [0.3, 0.1, 0.1], color: '#96ceb4' },
-      { name: 'left_thigh', position: [-0.15, 0.4, 0], size: [0.12, 0.5, 0.12], color: '#feca57' },
-      { name: 'right_thigh', position: [0.15, 0.4, 0], size: [0.12, 0.5, 0.12], color: '#feca57' },
-      { name: 'left_shin', position: [-0.15, -0.2, 0], size: [0.1, 0.4, 0.1], color: '#ff9ff3' },
-      { name: 'right_shin', position: [0.15, -0.2, 0], size: [0.1, 0.4, 0.1], color: '#ff9ff3' }
+    // Create position-based 3D visualization instead of fake bones
+    const skeletonGroup = new THREE.Group();
+    const jointSpheres: { [key: string]: THREE.Mesh } = {};
+    const boneLines: THREE.Line[] = [];
+
+    // MediaPipe pose connections for skeleton visualization
+    const poseConnections = [
+      // Face
+      [0, 1], [1, 2], [2, 3], [3, 7], [0, 4], [4, 5], [5, 6], [6, 8],
+      // Torso
+      [9, 10], [11, 12], [11, 13], [13, 15], [15, 17], [15, 19], [15, 21],
+      [12, 14], [14, 16], [16, 18], [16, 20], [16, 22],
+      [11, 23], [12, 24], [23, 24],
+      // Left leg
+      [23, 25], [25, 27], [27, 29], [29, 31],
+      // Right leg
+      [24, 26], [26, 28], [28, 30], [30, 32]
     ];
 
-    bodyParts.forEach(part => {
-      const geometry = new THREE.BoxGeometry(...part.size);
-      const material = new THREE.MeshStandardMaterial({ color: part.color });
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(...part.position);
-      mesh.name = part.name;
-      mesh.userData.originalPosition = new THREE.Vector3(...part.position);
-      mesh.userData.originalRotation = new THREE.Euler(0, 0, 0);
-      defaultAvatar.add(mesh);
-      meshes[part.name] = mesh;
+    // Create joint spheres for all 33 landmarks
+    for (let i = 0; i < 33; i++) {
+      const geometry = new THREE.SphereGeometry(0.03, 8, 8);
+      const material = new THREE.MeshStandardMaterial({
+        color: i === 23 || i === 24 ? '#ff0000' : '#00ff00' // Hip joints in red, others in green
+      });
+      const sphere = new THREE.Mesh(geometry, material);
+      sphere.name = `joint_${i}`;
+      skeletonGroup.add(sphere);
+      jointSpheres[i] = sphere;
+    }
+
+    // Create bone lines
+    poseConnections.forEach(([start, end]) => {
+      const points = [
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, 0, 0)
+      ];
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      const material = new THREE.LineBasicMaterial({ color: 0x0000ff });
+      const line = new THREE.Line(geometry, material);
+      line.userData = { startJoint: start, endJoint: end };
+      skeletonGroup.add(line);
+      boneLines.push(line);
     });
 
+    // Add hip center reference point
+    const hipCenterGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+    const hipCenterMaterial = new THREE.MeshStandardMaterial({ color: '#ffff00' });
+    const hipCenter = new THREE.Mesh(hipCenterGeometry, hipCenterMaterial);
+    hipCenter.name = 'hip_center';
+    skeletonGroup.add(hipCenter);
+
+    defaultAvatar.add(skeletonGroup);
     groupRef.current.clear();
     groupRef.current.add(defaultAvatar);
     modelRef.current = defaultAvatar;
 
-    // Store meshes for direct manipulation
-    (defaultAvatar as any).meshes = meshes;
+    // Store references for pose application
+    (defaultAvatar as any).jointSpheres = jointSpheres;
+    (defaultAvatar as any).boneLines = boneLines;
+    (defaultAvatar as any).hipCenter = hipCenter;
 
     setIsLoaded(true);
     setHasModel(false);
@@ -155,191 +183,88 @@ export const FBXAvatar: React.FC<FBXAvatarProps> = ({ poseData, modelPath }) => 
     const landmarks = poseData.worldLandmarks;
     if (!landmarks || landmarks.length < 33) return;
 
-    const meshes = (avatar as any).meshes;
-    if (!meshes) return;
+    const jointSpheres = (avatar as any).jointSpheres;
+    const boneLines = (avatar as any).boneLines;
+    const hipCenter = (avatar as any).hipCenter;
 
-    // Get key landmarks
-    const leftShoulder = landmarks[11];
-    const rightShoulder = landmarks[12];
-    const leftElbow = landmarks[13];
-    const rightElbow = landmarks[14];
-    const leftWrist = landmarks[15];
-    const rightWrist = landmarks[16];
+    if (!jointSpheres || !boneLines || !hipCenter) return;
+
+    // Calculate hip center as reference point (pelvis center)
     const leftHip = landmarks[23];
     const rightHip = landmarks[24];
-    const leftKnee = landmarks[25];
-    const rightKnee = landmarks[26];
-    const leftAnkle = landmarks[27];
-    const rightAnkle = landmarks[28];
+    const hipCenterPos = new THREE.Vector3(
+      (leftHip.x + rightHip.x) / 2,
+      -(leftHip.y + rightHip.y) / 2,  // Flip Y axis for Three.js
+      (leftHip.z + rightHip.z) / 2
+    );
 
-    // Helper function to calculate rotation between two points
-    const calculateRotation = (from: any, to: any) => {
-      const direction = new THREE.Vector3(
-        to.x - from.x,
-        -(to.y - from.y),  // Flip Y axis
-        to.z - from.z
-      ).normalize();
+    // Scale factor to make the skeleton more visible (adjust as needed)
+    const scaleFactor = 5;
 
-      // Calculate euler angles
-      const euler = new THREE.Euler();
+    // Update hip center position
+    hipCenter.position.copy(hipCenterPos.multiplyScalar(scaleFactor));
 
-      // Calculate rotation around Z axis (for arm/leg swing)
-      const angleZ = Math.atan2(direction.y, direction.x);
-
-      // Calculate rotation around X axis (for forward/backward movement)
-      const angleX = Math.atan2(direction.z, Math.sqrt(direction.x * direction.x + direction.y * direction.y));
-
-      euler.set(angleX * 0.5, 0, angleZ - Math.PI / 2);
-      return euler;
-    };
-
-    // Apply rotations with smoothing
+    // Apply smoothing factor
     const smoothFactor = 0.15;
 
-    // Left arm (shoulder to elbow)
-    if (meshes['left_shoulder'] && leftShoulder && leftElbow) {
-      const targetRotation = calculateRotation(leftShoulder, leftElbow);
-      meshes['left_shoulder'].rotation.x = THREE.MathUtils.lerp(
-        meshes['left_shoulder'].rotation.x,
-        targetRotation.x,
-        smoothFactor
-      );
-      meshes['left_shoulder'].rotation.z = THREE.MathUtils.lerp(
-        meshes['left_shoulder'].rotation.z,
-        targetRotation.z,
-        smoothFactor
-      );
-    }
+    // Update all joint positions relative to hip center
+    landmarks.forEach((landmark, index) => {
+      if (jointSpheres[index] && landmark.visibility && landmark.visibility > 0.5) {
+        // Convert MediaPipe coordinates to Three.js coordinates (hip-centered)
+        const targetPosition = new THREE.Vector3(
+          landmark.x - hipCenterPos.x / scaleFactor,
+          -(landmark.y - hipCenterPos.y / scaleFactor),  // Flip Y axis
+          landmark.z - hipCenterPos.z / scaleFactor
+        ).multiplyScalar(scaleFactor);
 
-    // Right arm (shoulder to elbow)
-    if (meshes['right_shoulder'] && rightShoulder && rightElbow) {
-      const targetRotation = calculateRotation(rightShoulder, rightElbow);
-      meshes['right_shoulder'].rotation.x = THREE.MathUtils.lerp(
-        meshes['right_shoulder'].rotation.x,
-        targetRotation.x,
-        smoothFactor
-      );
-      meshes['right_shoulder'].rotation.z = THREE.MathUtils.lerp(
-        meshes['right_shoulder'].rotation.z,
-        targetRotation.z,
-        smoothFactor
-      );
-    }
+        // Apply smoothing to joint positions
+        jointSpheres[index].position.lerp(targetPosition, smoothFactor);
 
-    // Left forearm (elbow to wrist)
-    if (meshes['left_arm'] && leftElbow && leftWrist) {
-      const targetRotation = calculateRotation(leftElbow, leftWrist);
-      meshes['left_arm'].rotation.x = THREE.MathUtils.lerp(
-        meshes['left_arm'].rotation.x,
-        targetRotation.x,
-        smoothFactor
-      );
-      meshes['left_arm'].rotation.z = THREE.MathUtils.lerp(
-        meshes['left_arm'].rotation.z,
-        targetRotation.z,
-        smoothFactor
-      );
-    }
-
-    // Right forearm (elbow to wrist)
-    if (meshes['right_arm'] && rightElbow && rightWrist) {
-      const targetRotation = calculateRotation(rightElbow, rightWrist);
-      meshes['right_arm'].rotation.x = THREE.MathUtils.lerp(
-        meshes['right_arm'].rotation.x,
-        targetRotation.x,
-        smoothFactor
-      );
-      meshes['right_arm'].rotation.z = THREE.MathUtils.lerp(
-        meshes['right_arm'].rotation.z,
-        targetRotation.z,
-        smoothFactor
-      );
-    }
-
-    // Left thigh (hip to knee)
-    if (meshes['left_thigh'] && leftHip && leftKnee) {
-      const targetRotation = calculateRotation(leftHip, leftKnee);
-      meshes['left_thigh'].rotation.x = THREE.MathUtils.lerp(
-        meshes['left_thigh'].rotation.x,
-        targetRotation.x,
-        smoothFactor
-      );
-      meshes['left_thigh'].rotation.z = THREE.MathUtils.lerp(
-        meshes['left_thigh'].rotation.z,
-        targetRotation.z + Math.PI,
-        smoothFactor
-      );
-    }
-
-    // Right thigh (hip to knee)
-    if (meshes['right_thigh'] && rightHip && rightKnee) {
-      const targetRotation = calculateRotation(rightHip, rightKnee);
-      meshes['right_thigh'].rotation.x = THREE.MathUtils.lerp(
-        meshes['right_thigh'].rotation.x,
-        targetRotation.x,
-        smoothFactor
-      );
-      meshes['right_thigh'].rotation.z = THREE.MathUtils.lerp(
-        meshes['right_thigh'].rotation.z,
-        targetRotation.z + Math.PI,
-        smoothFactor
-      );
-    }
-
-    // Left shin (knee to ankle)
-    if (meshes['left_shin'] && leftKnee && leftAnkle) {
-      const targetRotation = calculateRotation(leftKnee, leftAnkle);
-      meshes['left_shin'].rotation.x = THREE.MathUtils.lerp(
-        meshes['left_shin'].rotation.x,
-        targetRotation.x,
-        smoothFactor
-      );
-      meshes['left_shin'].rotation.z = THREE.MathUtils.lerp(
-        meshes['left_shin'].rotation.z,
-        targetRotation.z + Math.PI,
-        smoothFactor
-      );
-    }
-
-    // Right shin (knee to ankle)
-    if (meshes['right_shin'] && rightKnee && rightAnkle) {
-      const targetRotation = calculateRotation(rightKnee, rightAnkle);
-      meshes['right_shin'].rotation.x = THREE.MathUtils.lerp(
-        meshes['right_shin'].rotation.x,
-        targetRotation.x,
-        smoothFactor
-      );
-      meshes['right_shin'].rotation.z = THREE.MathUtils.lerp(
-        meshes['right_shin'].rotation.z,
-        targetRotation.z + Math.PI,
-        smoothFactor
-      );
-    }
-
-    // Spine rotation based on shoulder tilt
-    if (meshes['spine'] && leftShoulder && rightShoulder) {
-      const shoulderTilt = Math.atan2(
-        rightShoulder.y - leftShoulder.y,
-        rightShoulder.x - leftShoulder.x
-      );
-      meshes['spine'].rotation.z = THREE.MathUtils.lerp(
-        meshes['spine'].rotation.z,
-        shoulderTilt * 0.3,
-        smoothFactor
-      );
-    }
-
-    // Head rotation (subtle following)
-    if (meshes['head']) {
-      const nose = landmarks[0];
-      if (nose) {
-        meshes['head'].rotation.y = THREE.MathUtils.lerp(
-          meshes['head'].rotation.y,
-          (nose.x - 0.5) * 0.5,
-          smoothFactor
-        );
+        // Color coding based on joint confidence
+        const material = jointSpheres[index].material as THREE.MeshStandardMaterial;
+        if (landmark.visibility > 0.8) {
+          material.color.setHex(0x00ff00); // Green for high confidence
+        } else if (landmark.visibility > 0.6) {
+          material.color.setHex(0xffff00); // Yellow for medium confidence
+        } else {
+          material.color.setHex(0xff0000); // Red for low confidence
+        }
       }
-    }
+    });
+
+    // Update bone line positions
+    boneLines.forEach(line => {
+      const startJoint = line.userData.startJoint;
+      const endJoint = line.userData.endJoint;
+
+      if (jointSpheres[startJoint] && jointSpheres[endJoint]) {
+        const startPos = jointSpheres[startJoint].position;
+        const endPos = jointSpheres[endJoint].position;
+
+        const positions = line.geometry.attributes.position;
+        positions.array[0] = startPos.x;
+        positions.array[1] = startPos.y;
+        positions.array[2] = startPos.z;
+        positions.array[3] = endPos.x;
+        positions.array[4] = endPos.y;
+        positions.array[5] = endPos.z;
+        positions.needsUpdate = true;
+
+        // Color bone lines based on both joints' confidence
+        const startLandmark = landmarks[startJoint];
+        const endLandmark = landmarks[endJoint];
+        const avgConfidence = (startLandmark.visibility + endLandmark.visibility) / 2;
+
+        const material = line.material as THREE.LineBasicMaterial;
+        if (avgConfidence > 0.7) {
+          material.color.setHex(0x0000ff); // Blue for high confidence connections
+        } else if (avgConfidence > 0.5) {
+          material.color.setHex(0x00ffff); // Cyan for medium confidence
+        } else {
+          material.color.setHex(0x666666); // Gray for low confidence
+        }
+      }
+    });
   };
 
   return (
