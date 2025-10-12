@@ -8,14 +8,19 @@ export interface AuthState {
 }
 
 // Motion Capture Types
+export interface Landmark {
+  x: number;
+  y: number;
+  z: number;
+  visibility: number;
+  name?: string;
+}
+
 export interface MotionData {
   timestamp: number;
-  landmarks: {
-    pose?: any[];
-    leftHand?: any[];
-    rightHand?: any[];
-    face?: any[];
-  };
+  landmarks?: Landmark[];
+  worldLandmarks?: Landmark[];
+  segmentationMask?: ImageData;
 }
 
 export interface RecordedMotion {
@@ -40,8 +45,9 @@ export interface Model3D {
 export interface CameraSource {
   id: string;
   type: 'webcam' | 'mobile';
-  stream: MediaStream | null;
-  position: 'front' | 'back';
+  deviceId?: string;
+  label?: string;
+  stream?: MediaStream | null;
   isActive: boolean;
 }
 

@@ -4,13 +4,17 @@ import { MotionData, RecordedMotion, CameraSource } from '../types';
 interface MotionStore {
   isCapturing: boolean;
   isRecording: boolean;
+  isPaused: boolean;
   recordedMotions: RecordedMotion[];
-  currentMotion: MotionData[];
+  currentMotionData: MotionData[];
   cameras: CameraSource[];
   recordingStartTime: number | null;
 
   setCapturing: (isCapturing: boolean) => void;
-  setRecording: (isRecording: boolean) => void;
+  startRecording: () => void;
+  stopRecording: () => void;
+  pauseRecording: () => void;
+  resumeRecording: () => void;
   addMotionData: (data: MotionData) => void;
   clearMotionData: () => void;
   saveRecording: (name: string) => void;
@@ -24,37 +28,51 @@ interface MotionStore {
 export const useMotionStore = create<MotionStore>((set, get) => ({
   isCapturing: false,
   isRecording: false,
+  isPaused: false,
   recordedMotions: [],
-  currentMotion: [],
+  currentMotionData: [],
   cameras: [],
   recordingStartTime: null,
 
   setCapturing: (isCapturing) => set({ isCapturing }),
 
-  setRecording: (isRecording) => {
-    if (isRecording) {
-      set({
-        isRecording,
-        recordingStartTime: Date.now(),
-        currentMotion: []
-      });
-    } else {
-      set({ isRecording, recordingStartTime: null });
-    }
+  startRecording: () => {
+    set({
+      isRecording: true,
+      isPaused: false,
+      recordingStartTime: Date.now(),
+      currentMotionData: []
+    });
+  },
+
+  stopRecording: () => {
+    set({
+      isRecording: false,
+      isPaused: false,
+      recordingStartTime: null
+    });
+  },
+
+  pauseRecording: () => {
+    set({ isPaused: true });
+  },
+
+  resumeRecording: () => {
+    set({ isPaused: false });
   },
 
   addMotionData: (data) => {
-    const { isRecording, currentMotion } = get();
-    if (isRecording) {
-      set({ currentMotion: [...currentMotion, data] });
+    const { isRecording, isPaused, currentMotionData } = get();
+    if (isRecording && !isPaused) {
+      set({ currentMotionData: [...currentMotionData, data] });
     }
   },
 
-  clearMotionData: () => set({ currentMotion: [] }),
+  clearMotionData: () => set({ currentMotionData: [] }),
 
   saveRecording: (name) => {
-    const { currentMotion, recordedMotions, recordingStartTime } = get();
-    if (currentMotion.length === 0) return;
+    const { currentMotionData, recordedMotions, recordingStartTime } = get();
+    if (currentMotionData.length === 0) return;
 
     const duration = recordingStartTime
       ? Date.now() - recordingStartTime
@@ -64,15 +82,16 @@ export const useMotionStore = create<MotionStore>((set, get) => ({
       id: crypto.randomUUID(),
       name,
       duration,
-      frameCount: currentMotion.length,
-      data: currentMotion,
+      frameCount: currentMotionData.length,
+      data: currentMotionData,
       createdAt: new Date().toISOString(),
     };
 
     set({
       recordedMotions: [...recordedMotions, newRecording],
-      currentMotion: [],
+      currentMotionData: [],
       isRecording: false,
+      isPaused: false,
       recordingStartTime: null,
     });
   },
