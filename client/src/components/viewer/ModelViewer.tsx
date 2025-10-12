@@ -33,11 +33,14 @@ function Model3D({ modelUrl, modelType }: Model3DProps) {
       const latestMotion = currentMotionData[currentMotionData.length - 1];
 
       // Apply transformations based on motion data
-      // This will be enhanced when we integrate Kalidokit
-      if (latestMotion.landmarks) {
-        // For now, just rotate the model based on pose
-        // Full implementation will use Kalidokit to convert landmarks to bone rotations
-        meshRef.current.rotation.y += 0.001;
+      if (latestMotion.worldLandmarks && latestMotion.worldLandmarks.length > 0) {
+        // Import retargeting functions dynamically to avoid circular deps
+        import('../../utils/motionRetargeting').then(({ landmarksToBoneRotations, applyBoneRotations }) => {
+          const rotations = landmarksToBoneRotations(latestMotion);
+          if (rotations && meshRef.current) {
+            applyBoneRotations(meshRef.current, rotations);
+          }
+        });
       }
     }
   });
