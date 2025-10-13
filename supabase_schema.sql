@@ -1,5 +1,5 @@
 -- Users table (extends Supabase auth.users)
-CREATE TABLE public.profiles (
+CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID REFERENCES auth.users(id) PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
   full_name TEXT,
@@ -15,7 +15,7 @@ CREATE TABLE public.profiles (
 );
 
 -- 3D Models table
-CREATE TABLE public.models (
+CREATE TABLE IF NOT EXISTS public.models (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
   name TEXT NOT NULL,
@@ -29,7 +29,7 @@ CREATE TABLE public.models (
 );
 
 -- Motion recordings table
-CREATE TABLE public.recordings (
+CREATE TABLE IF NOT EXISTS public.recordings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
   model_id UUID REFERENCES public.models(id) ON DELETE SET NULL,
@@ -43,7 +43,7 @@ CREATE TABLE public.recordings (
 );
 
 -- Sessions table (for multi-camera sessions)
-CREATE TABLE public.sessions (
+CREATE TABLE IF NOT EXISTS public.sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
   room_id TEXT UNIQUE NOT NULL,
@@ -54,7 +54,7 @@ CREATE TABLE public.sessions (
 );
 
 -- Usage statistics table
-CREATE TABLE public.usage_stats (
+CREATE TABLE IF NOT EXISTS public.usage_stats (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
   action_type TEXT NOT NULL CHECK (action_type IN ('recording', 'export', 'upload')),
@@ -64,7 +64,7 @@ CREATE TABLE public.usage_stats (
 );
 
 -- Payments table
-CREATE TABLE public.payments (
+CREATE TABLE IF NOT EXISTS public.payments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
   stripe_payment_id TEXT UNIQUE NOT NULL,
@@ -83,14 +83,17 @@ ALTER TABLE public.usage_stats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 
 -- Profiles policies
+DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
 CREATE POLICY "Users can view own profile"
   ON public.profiles FOR SELECT
   USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile"
   ON public.profiles FOR UPDATE
   USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Admins can view all profiles" ON public.profiles;
 CREATE POLICY "Admins can view all profiles"
   ON public.profiles FOR SELECT
   USING (
@@ -101,61 +104,75 @@ CREATE POLICY "Admins can view all profiles"
   );
 
 -- Models policies
+DROP POLICY IF EXISTS "Users can view own models" ON public.models;
 CREATE POLICY "Users can view own models"
   ON public.models FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own models" ON public.models;
 CREATE POLICY "Users can insert own models"
   ON public.models FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update own models" ON public.models;
 CREATE POLICY "Users can update own models"
   ON public.models FOR UPDATE
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete own models" ON public.models;
 CREATE POLICY "Users can delete own models"
   ON public.models FOR DELETE
   USING (auth.uid() = user_id);
 
 -- Recordings policies
+DROP POLICY IF EXISTS "Users can view own recordings" ON public.recordings;
 CREATE POLICY "Users can view own recordings"
   ON public.recordings FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own recordings" ON public.recordings;
 CREATE POLICY "Users can insert own recordings"
   ON public.recordings FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update own recordings" ON public.recordings;
 CREATE POLICY "Users can update own recordings"
   ON public.recordings FOR UPDATE
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete own recordings" ON public.recordings;
 CREATE POLICY "Users can delete own recordings"
   ON public.recordings FOR DELETE
   USING (auth.uid() = user_id);
 
 -- Sessions policies
+DROP POLICY IF EXISTS "Users can view own sessions" ON public.sessions;
 CREATE POLICY "Users can view own sessions"
   ON public.sessions FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own sessions" ON public.sessions;
 CREATE POLICY "Users can insert own sessions"
   ON public.sessions FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update own sessions" ON public.sessions;
 CREATE POLICY "Users can update own sessions"
   ON public.sessions FOR UPDATE
   USING (auth.uid() = user_id);
 
 -- Usage stats policies
+DROP POLICY IF EXISTS "Users can view own usage stats" ON public.usage_stats;
 CREATE POLICY "Users can view own usage stats"
   ON public.usage_stats FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own usage stats" ON public.usage_stats;
 CREATE POLICY "Users can insert own usage stats"
   ON public.usage_stats FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Admins can view all usage stats" ON public.usage_stats;
 CREATE POLICY "Admins can view all usage stats"
   ON public.usage_stats FOR SELECT
   USING (
@@ -166,10 +183,12 @@ CREATE POLICY "Admins can view all usage stats"
   );
 
 -- Payments policies
+DROP POLICY IF EXISTS "Users can view own payments" ON public.payments;
 CREATE POLICY "Users can view own payments"
   ON public.payments FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Admins can view all payments" ON public.payments;
 CREATE POLICY "Admins can view all payments"
   ON public.payments FOR SELECT
   USING (
@@ -194,7 +213,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger to create profile on user signup
+-- Drop existing trigger if exists, then create new one
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
@@ -209,22 +229,27 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Triggers for updated_at
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON public.profiles;
 CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_models_updated_at ON public.models;
 CREATE TRIGGER update_models_updated_at BEFORE UPDATE ON public.models
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_recordings_updated_at ON public.recordings;
 CREATE TRIGGER update_recordings_updated_at BEFORE UPDATE ON public.recordings
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
--- Create storage buckets
+-- Create storage buckets (only if they don't exist)
 INSERT INTO storage.buckets (id, name, public) VALUES
   ('models', 'models', false),
   ('recordings', 'recordings', false),
-  ('thumbnails', 'thumbnails', true);
+  ('thumbnails', 'thumbnails', true)
+ON CONFLICT (id) DO NOTHING;
 
 -- Storage policies for models bucket
+DROP POLICY IF EXISTS "Users can upload own models" ON storage.objects;
 CREATE POLICY "Users can upload own models"
   ON storage.objects FOR INSERT
   WITH CHECK (
@@ -232,6 +257,7 @@ CREATE POLICY "Users can upload own models"
     auth.uid()::text = (storage.foldername(name))[1]
   );
 
+DROP POLICY IF EXISTS "Users can view own models" ON storage.objects;
 CREATE POLICY "Users can view own models"
   ON storage.objects FOR SELECT
   USING (
@@ -239,6 +265,7 @@ CREATE POLICY "Users can view own models"
     auth.uid()::text = (storage.foldername(name))[1]
   );
 
+DROP POLICY IF EXISTS "Users can delete own models" ON storage.objects;
 CREATE POLICY "Users can delete own models"
   ON storage.objects FOR DELETE
   USING (
@@ -247,6 +274,7 @@ CREATE POLICY "Users can delete own models"
   );
 
 -- Storage policies for recordings bucket
+DROP POLICY IF EXISTS "Users can upload own recordings" ON storage.objects;
 CREATE POLICY "Users can upload own recordings"
   ON storage.objects FOR INSERT
   WITH CHECK (
@@ -254,6 +282,7 @@ CREATE POLICY "Users can upload own recordings"
     auth.uid()::text = (storage.foldername(name))[1]
   );
 
+DROP POLICY IF EXISTS "Users can view own recordings" ON storage.objects;
 CREATE POLICY "Users can view own recordings"
   ON storage.objects FOR SELECT
   USING (
@@ -261,6 +290,7 @@ CREATE POLICY "Users can view own recordings"
     auth.uid()::text = (storage.foldername(name))[1]
   );
 
+DROP POLICY IF EXISTS "Users can delete own recordings" ON storage.objects;
 CREATE POLICY "Users can delete own recordings"
   ON storage.objects FOR DELETE
   USING (
@@ -269,10 +299,12 @@ CREATE POLICY "Users can delete own recordings"
   );
 
 -- Storage policies for thumbnails bucket (public)
+DROP POLICY IF EXISTS "Anyone can view thumbnails" ON storage.objects;
 CREATE POLICY "Anyone can view thumbnails"
   ON storage.objects FOR SELECT
   USING (bucket_id = 'thumbnails');
 
+DROP POLICY IF EXISTS "Users can upload own thumbnails" ON storage.objects;
 CREATE POLICY "Users can upload own thumbnails"
   ON storage.objects FOR INSERT
   WITH CHECK (
@@ -280,6 +312,7 @@ CREATE POLICY "Users can upload own thumbnails"
     auth.uid()::text = (storage.foldername(name))[1]
   );
 
+DROP POLICY IF EXISTS "Users can delete own thumbnails" ON storage.objects;
 CREATE POLICY "Users can delete own thumbnails"
   ON storage.objects FOR DELETE
   USING (
