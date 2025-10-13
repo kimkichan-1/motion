@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { Suspense, useEffect, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera, useGLTF, useFBX } from '@react-three/drei';
+import { OrbitControls, PerspectiveCamera, useGLTF, useFBX, Center } from '@react-three/drei';
 import * as THREE from 'three';
 import { useModelStore } from '../../store/modelStore';
 
@@ -14,16 +14,26 @@ function Model({ url, fileType, poseData }: ModelProps) {
   const modelRef = useRef<THREE.Group>(null);
   let model: any = null;
 
-  try {
-    if (fileType === 'fbx') {
-      model = useFBX(url);
-    } else {
-      model = useGLTF(url);
-    }
-  } catch (error) {
-    console.error('Error loading model:', error);
-    return null;
+  if (fileType === 'fbx') {
+    model = useFBX(url);
+  } else {
+    model = useGLTF(url);
   }
+
+  useEffect(() => {
+    if (!modelRef.current) return;
+
+    // Auto-scale model to fit in view
+    const box = new THREE.Box3().setFromObject(modelRef.current);
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const scale = 2 / maxDim;
+    modelRef.current.scale.setScalar(scale);
+
+    // Center the model
+    const center = box.getCenter(new THREE.Vector3());
+    modelRef.current.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
+  }, [model]);
 
   useFrame(() => {
     if (!modelRef.current || !poseData) return;
@@ -49,8 +59,16 @@ function Model({ url, fileType, poseData }: ModelProps) {
     <primitive
       ref={modelRef}
       object={fileType === 'fbx' ? model : model.scene}
-      scale={1}
     />
+  );
+}
+
+function Loader() {
+  return (
+    <mesh>
+      <boxGeometry args={[1, 1, 1]} />
+      <meshStandardMaterial color="orange" wireframe />
+    </mesh>
   );
 }
 
@@ -99,11 +117,13 @@ export default function ModelViewer() {
         {/* Grid */}
         <gridHelper args={[10, 10]} />
 
-        {/* 3D Model */}
-        <Model
-          url={currentModel.file_url}
-          fileType={currentModel.file_type}
-        />
+        {/* 3D Model with Suspense */}
+        <Suspense fallback={<Loader />}>
+          <Model
+            url={currentModel.file_url}
+            fileType={currentModel.file_type}
+          />
+        </Suspense>
       </Canvas>
     </div>
   );

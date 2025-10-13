@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { PoseFrame } from '../types/index';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import type { PoseFrame } from '../types/index';
 
 interface UseMediaPipeOptions {
   onPoseDetected?: (poseData: PoseFrame) => void;
@@ -12,9 +12,21 @@ export function useMediaPipe({ onPoseDetected, videoElement }: UseMediaPipeOptio
   const [isTracking, setIsTracking] = useState(false);
   const poseDetectorRef = useRef<any>(null);
   const animationFrameRef = useRef<number>();
+  const cameraRef = useRef<any>(null);
+  const onPoseDetectedRef = useRef(onPoseDetected);
+  const isInitializedRef = useRef(false);
+
+  // Update callback ref without triggering re-initialization
+  useEffect(() => {
+    onPoseDetectedRef.current = onPoseDetected;
+  }, [onPoseDetected]);
 
   useEffect(() => {
+    // Prevent multiple initializations
+    if (isInitializedRef.current) return;
+
     let mounted = true;
+    isInitializedRef.current = true;
 
     async function initializeMediaPipe() {
       try {
@@ -59,7 +71,7 @@ export function useMediaPipe({ onPoseDetected, videoElement }: UseMediaPipeOptio
             })) || []
           };
 
-          onPoseDetected?.(poseData);
+          onPoseDetectedRef.current?.(poseData);
         });
 
         poseDetectorRef.current = pose;
@@ -77,6 +89,7 @@ export function useMediaPipe({ onPoseDetected, videoElement }: UseMediaPipeOptio
             width: 640,
             height: 480
           });
+          cameraRef.current = camera;
           camera.start();
         }
 
@@ -93,14 +106,33 @@ export function useMediaPipe({ onPoseDetected, videoElement }: UseMediaPipeOptio
 
     return () => {
       mounted = false;
+      isInitializedRef.current = false;
+
+      // Stop camera first
+      if (cameraRef.current) {
+        try {
+          cameraRef.current.stop();
+        } catch (e) {
+          console.warn('Error stopping camera:', e);
+        }
+        cameraRef.current = null;
+      }
+
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
+
+      // Close pose detector
       if (poseDetectorRef.current) {
-        poseDetectorRef.current.close();
+        try {
+          poseDetectorRef.current.close();
+        } catch (e) {
+          console.warn('Error closing pose detector:', e);
+        }
+        poseDetectorRef.current = null;
       }
     };
-  }, [videoElement, onPoseDetected]);
+  }, [videoElement]);
 
   const processFrame = async (videoEl: HTMLVideoElement) => {
     if (!poseDetectorRef.current || !isTracking) return;
