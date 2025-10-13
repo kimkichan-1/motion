@@ -3,6 +3,7 @@ import Home from './pages/Home';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
 import Capture from './pages/capture/Capture';
+import MobileCamera from './pages/MobileCamera';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 
 function App() {
@@ -20,6 +21,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/mobile/:roomId" element={<MobileCamera />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
