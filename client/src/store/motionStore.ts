@@ -1,137 +1,159 @@
 import { create } from 'zustand';
-import { MotionData, RecordedMotion, CameraSource } from '../types';
+import { supabase } from '../lib/supabase';
+import { Recording, PoseFrame } from '../types';
 
-interface MotionStore {
-  isCapturing: boolean;
+interface MotionState {
+  recordings: Recording[];
+  currentRecording: Recording | null;
   isRecording: boolean;
-  isPaused: boolean;
-  recordedMotions: RecordedMotion[];
-  currentMotionData: MotionData[];
-  cameras: CameraSource[];
-  recordingStartTime: number | null;
+  recordedFrames: PoseFrame[];
+  loading: boolean;
 
-  setCapturing: (isCapturing: boolean) => void;
   startRecording: () => void;
-  stopRecording: () => void;
-  pauseRecording: () => void;
-  resumeRecording: () => void;
-  addMotionData: (data: MotionData) => void;
-  clearMotionData: () => void;
-  saveRecording: (name: string) => void;
-  deleteRecording: (id: string) => void;
-  addCamera: (camera: CameraSource) => void;
-  removeCamera: (id: string) => void;
-  updateCameraStream: (id: string, stream: MediaStream) => void;
-  toggleCameraActive: (id: string) => void;
+  stopRecording: (name: string, modelId?: string) => Promise<Recording>;
+  addFrame: (frame: PoseFrame) => void;
+  fetchRecordings: () => Promise<void>;
+  deleteRecording: (id: string) => Promise<void>;
+  exportRecording: (recordingId: string, format: 'json' | 'fbx' | 'bvh') => Promise<void>;
 }
 
-export const useMotionStore = create<MotionStore>((set, get) => ({
-  isCapturing: false,
+export const useMotionStore = create<MotionState>((set, get) => ({
+  recordings: [],
+  currentRecording: null,
   isRecording: false,
-  isPaused: false,
-  recordedMotions: [],
-  currentMotionData: [],
-  cameras: [],
-  recordingStartTime: null,
-
-  setCapturing: (isCapturing) => set({ isCapturing }),
+  recordedFrames: [],
+  loading: false,
 
   startRecording: () => {
-    set({
-      isRecording: true,
-      isPaused: false,
-      recordingStartTime: Date.now(),
-      currentMotionData: []
-    });
+    set({ isRecording: true, recordedFrames: [] });
   },
 
-  stopRecording: () => {
-    set({
-      isRecording: false,
-      isPaused: false,
-      recordingStartTime: null
-    });
-  },
+  stopRecording: async (name, modelId) => {
+    const { recordedFrames } = get();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
 
-  pauseRecording: () => {
-    set({ isPaused: true });
-  },
-
-  resumeRecording: () => {
-    set({ isPaused: false });
-  },
-
-  addMotionData: (data) => {
-    const { isRecording, isPaused, currentMotionData } = get();
-    if (isRecording && !isPaused) {
-      set({ currentMotionData: [...currentMotionData, data] });
-    }
-  },
-
-  clearMotionData: () => set({ currentMotionData: [] }),
-
-  saveRecording: (name) => {
-    const { currentMotionData, recordedMotions, recordingStartTime } = get();
-    if (currentMotionData.length === 0) return;
-
-    const duration = recordingStartTime
-      ? Date.now() - recordingStartTime
+    const duration = recordedFrames.length > 0
+      ? (recordedFrames[recordedFrames.length - 1].timestamp - recordedFrames[0].timestamp) / 1000
       : 0;
 
-    const newRecording: RecordedMotion = {
-      id: crypto.randomUUID(),
-      name,
-      duration,
-      frameCount: currentMotionData.length,
-      data: currentMotionData,
-      createdAt: new Date().toISOString(),
-    };
+    // Save recording to database
+    const { data, error } = await supabase
+      .from('recordings')
+      .insert({
+        user_id: user.id,
+        model_id: modelId,
+        name,
+        duration,
+        pose_data: recordedFrames
+      })
+      .select()
+      .single();
 
-    set({
-      recordedMotions: [...recordedMotions, newRecording],
-      currentMotionData: [],
+    if (error) throw error;
+
+    // Track usage
+    await supabase.from('usage_stats').insert({
+      user_id: user.id,
+      action_type: 'recording',
+      duration
+    });
+
+    set(state => ({
+      recordings: [data as Recording, ...state.recordings],
       isRecording: false,
-      isPaused: false,
-      recordingStartTime: null,
-    });
+      recordedFrames: [],
+      currentRecording: data as Recording
+    }));
+
+    return data as Recording;
   },
 
-  deleteRecording: (id) => {
-    const { recordedMotions } = get();
-    set({
-      recordedMotions: recordedMotions.filter((r) => r.id !== id),
-    });
+  addFrame: (frame) => {
+    const { isRecording } = get();
+    if (!isRecording) return;
+
+    set(state => ({
+      recordedFrames: [...state.recordedFrames, frame]
+    }));
   },
 
-  addCamera: (camera) => {
-    const { cameras } = get();
-    set({ cameras: [...cameras, camera] });
-  },
+  fetchRecordings: async () => {
+    set({ loading: true });
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
 
-  removeCamera: (id) => {
-    const { cameras } = get();
-    const camera = cameras.find((c) => c.id === id);
-    if (camera?.stream) {
-      camera.stream.getTracks().forEach((track) => track.stop());
+      const { data, error } = await supabase
+        .from('recordings')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      set({ recordings: data as Recording[] });
+    } catch (error) {
+      console.error('Error fetching recordings:', error);
+    } finally {
+      set({ loading: false });
     }
-    set({ cameras: cameras.filter((c) => c.id !== id) });
   },
 
-  updateCameraStream: (id, stream) => {
-    const { cameras } = get();
-    set({
-      cameras: cameras.map((c) =>
-        c.id === id ? { ...c, stream } : c
-      ),
-    });
+  deleteRecording: async (id) => {
+    const { error } = await supabase
+      .from('recordings')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+
+    set(state => ({
+      recordings: state.recordings.filter(r => r.id !== id),
+      currentRecording: state.currentRecording?.id === id ? null : state.currentRecording
+    }));
   },
 
-  toggleCameraActive: (id) => {
-    const { cameras } = get();
-    set({
-      cameras: cameras.map((c) =>
-        c.id === id ? { ...c, isActive: !c.isActive } : c
-      ),
+  exportRecording: async (recordingId, format) => {
+    const recording = get().recordings.find(r => r.id === recordingId);
+    if (!recording || !recording.pose_data) {
+      throw new Error('Recording not found or has no data');
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    let exportData: string;
+    let mimeType: string;
+    let fileExtension: string;
+
+    if (format === 'json') {
+      exportData = JSON.stringify(recording.pose_data, null, 2);
+      mimeType = 'application/json';
+      fileExtension = 'json';
+    } else {
+      // For FBX/BVH, you would need a conversion library
+      // This is a placeholder - actual implementation would require
+      // libraries like three.js exporters or custom converters
+      throw new Error(`Export to ${format} not yet implemented`);
+    }
+
+    // Create and download file
+    const blob = new Blob([exportData], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${recording.name}.${fileExtension}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    // Track usage
+    await supabase.from('usage_stats').insert({
+      user_id: user.id,
+      action_type: 'export',
+      file_size: blob.size
     });
-  },
+  }
 }));

@@ -1,118 +1,109 @@
 import { Server, Socket } from 'socket.io';
 
-interface MotionData {
+interface PoseData {
+  landmarks: any[];
+  worldLandmarks: any[];
   timestamp: number;
-  landmarks: any;
 }
 
-interface Room {
+interface RoomUser {
   id: string;
-  participants: Set<string>;
+  role: 'desktop' | 'mobile';
 }
 
-const rooms = new Map<string, Room>();
+const rooms = new Map<string, Set<string>>();
+const userRoles = new Map<string, 'desktop' | 'mobile'>();
 
 export function setupSocketHandlers(io: Server) {
   io.on('connection', (socket: Socket) => {
-    console.log(`Client connected: ${socket.id}`);
+    console.log('Client connected:', socket.id);
 
     // Join room for multi-camera sync
-    socket.on('join-room', (roomId: string) => {
+    socket.on('join-room', (data: { roomId: string; role: 'desktop' | 'mobile' }) => {
+      const { roomId, role } = data;
+
       socket.join(roomId);
+      userRoles.set(socket.id, role);
 
       if (!rooms.has(roomId)) {
-        rooms.set(roomId, {
-          id: roomId,
-          participants: new Set()
-        });
+        rooms.set(roomId, new Set());
       }
+      rooms.get(roomId)?.add(socket.id);
 
-      const room = rooms.get(roomId)!;
-      room.participants.add(socket.id);
+      console.log(`User ${socket.id} joined room ${roomId} as ${role}`);
 
-      console.log(`Socket ${socket.id} joined room ${roomId}`);
-
-      // Notify other participants
+      // Notify other users in the room
       socket.to(roomId).emit('user-joined', {
-        socketId: socket.id,
-        participantCount: room.participants.size
+        userId: socket.id,
+        role
       });
 
-      // Send current participant count to the new joiner
-      socket.emit('room-info', {
-        roomId,
-        participantCount: room.participants.size
+      // Send current room users to the new user
+      const roomUsers = Array.from(rooms.get(roomId) || []).map(id => ({
+        id,
+        role: userRoles.get(id)
+      }));
+
+      socket.emit('room-users', roomUsers);
+    });
+
+    // Handle pose data from cameras
+    socket.on('pose-data', (data: { roomId: string; poseData: PoseData }) => {
+      const { roomId, poseData } = data;
+      const role = userRoles.get(socket.id);
+
+      // Broadcast pose data to all users in the room except sender
+      socket.to(roomId).emit('pose-update', {
+        userId: socket.id,
+        role,
+        poseData
       });
     });
 
-    // Handle motion data streaming
-    socket.on('motion-data', (data: MotionData & { roomId: string }) => {
-      const { roomId, ...motionData } = data;
-
-      // Broadcast to all other participants in the room
-      socket.to(roomId).emit('motion-data', {
-        socketId: socket.id,
-        ...motionData
-      });
-    });
-
-    // WebRTC signaling
-    socket.on('webrtc-offer', (data: { roomId: string; offer: any; to: string }) => {
-      socket.to(data.to).emit('webrtc-offer', {
-        from: socket.id,
+    // WebRTC signaling for video streaming
+    socket.on('offer', (data: { roomId: string; offer: RTCSessionDescriptionInit }) => {
+      socket.to(data.roomId).emit('offer', {
+        userId: socket.id,
         offer: data.offer
       });
     });
 
-    socket.on('webrtc-answer', (data: { roomId: string; answer: any; to: string }) => {
-      socket.to(data.to).emit('webrtc-answer', {
-        from: socket.id,
+    socket.on('answer', (data: { roomId: string; answer: RTCSessionDescriptionInit }) => {
+      socket.to(data.roomId).emit('answer', {
+        userId: socket.id,
         answer: data.answer
       });
     });
 
-    socket.on('webrtc-ice-candidate', (data: { candidate: any; to: string }) => {
-      socket.to(data.to).emit('webrtc-ice-candidate', {
-        from: socket.id,
+    socket.on('ice-candidate', (data: { roomId: string; candidate: RTCIceCandidate }) => {
+      socket.to(data.roomId).emit('ice-candidate', {
+        userId: socket.id,
         candidate: data.candidate
       });
     });
 
-    // Leave room
-    socket.on('leave-room', (roomId: string) => {
-      handleLeaveRoom(socket, roomId);
-    });
-
-    // Handle disconnect
+    // Handle disconnection
     socket.on('disconnect', () => {
-      console.log(`Client disconnected: ${socket.id}`);
+      console.log('Client disconnected:', socket.id);
 
-      // Remove from all rooms
-      rooms.forEach((room, roomId) => {
-        if (room.participants.has(socket.id)) {
-          handleLeaveRoom(socket, roomId);
+      // Remove user from all rooms
+      rooms.forEach((users, roomId) => {
+        if (users.has(socket.id)) {
+          users.delete(socket.id);
+
+          // Notify other users
+          socket.to(roomId).emit('user-left', {
+            userId: socket.id
+          });
+
+          // Clean up empty rooms
+          if (users.size === 0) {
+            rooms.delete(roomId);
+          }
         }
       });
+
+      userRoles.delete(socket.id);
     });
   });
-}
-
-function handleLeaveRoom(socket: Socket, roomId: string) {
-  const room = rooms.get(roomId);
-  if (room) {
-    room.participants.delete(socket.id);
-    socket.leave(roomId);
-
-    // Notify other participants
-    socket.to(roomId).emit('user-left', {
-      socketId: socket.id,
-      participantCount: room.participants.size
-    });
-
-    // Clean up empty rooms
-    if (room.participants.size === 0) {
-      rooms.delete(roomId);
-      console.log(`Room ${roomId} removed (empty)`);
-    }
-  }
 }

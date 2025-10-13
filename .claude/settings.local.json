@@ -14,7 +14,10 @@
       "Bash(git commit -m \"$(cat <<''EOF''\nInitial project setup for motion capture platform\n\n- Setup React + Vite + TypeScript frontend with TailwindCSS\n- Setup Node.js + Express + Socket.io backend\n- Integrated Supabase for authentication and database\n- Created Zustand stores for state management (auth, motion, model)\n- Designed complete database schema with RLS policies\n- Implemented WebRTC signaling via Socket.io\n- Added project structure and configuration files\n- Configured for Render.com deployment\n\nKey Features:\n* Real-time motion capture with MediaPipe\n* 3D model upload and rendering (FBX/GLB)\n* Multi-camera synchronization (webcam + mobile)\n* Motion recording and export\n* Subscription-based service with Stripe\n* Admin dashboard for user management\n\nTech Stack:\n* Frontend: React 18, Vite, Three.js, React Three Fiber\n* Backend: Express, Socket.io\n* Database: Supabase (PostgreSQL)\n* State: Zustand\n* Styling: TailwindCSS\n\n🤖 Generated with Claude Code\nEOF\n)\")",
       "Bash(git push:*)",
       "Bash(git commit:*)",
-      "Bash(npm run dev)"
+      "Bash(npm run dev)",
+      "Bash(taskkill:*)",
+      "Bash(dir:*)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []

@@ -1,98 +1,86 @@
-import type { User } from '@supabase/supabase-js';
-
-// Auth Types
-export interface AuthState {
-  user: User | null;
-  isLoading: boolean;
-  isAuthenticated: boolean;
+export interface Profile {
+  id: string;
+  email: string;
+  full_name?: string;
+  avatar_url?: string;
+  subscription_tier: 'free' | 'pro' | 'enterprise';
+  subscription_status: 'active' | 'inactive' | 'cancelled' | 'trial';
+  trial_ends_at?: string;
+  subscription_ends_at?: string;
+  stripe_customer_id?: string;
+  is_admin: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
-// Motion Capture Types
+export interface Model {
+  id: string;
+  user_id: string;
+  name: string;
+  file_url: string;
+  file_type: 'fbx' | 'glb' | 'gltf';
+  thumbnail_url?: string;
+  file_size?: number;
+  bone_mapping?: BoneMapping;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BoneMapping {
+  [key: string]: string; // Maps MediaPipe landmarks to model bones
+}
+
+export interface Recording {
+  id: string;
+  user_id: string;
+  model_id?: string;
+  name: string;
+  duration?: number;
+  pose_data?: PoseFrame[];
+  file_url?: string;
+  thumbnail_url?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PoseFrame {
+  timestamp: number;
+  landmarks: Landmark[];
+  worldLandmarks: Landmark[];
+}
+
 export interface Landmark {
   x: number;
   y: number;
   z: number;
-  visibility: number;
-  name?: string;
+  visibility?: number;
 }
 
-export interface MotionData {
-  timestamp: number;
-  landmarks?: Landmark[];
-  worldLandmarks?: Landmark[];
-  segmentationMask?: ImageData;
-}
-
-export interface RecordedMotion {
+export interface Session {
   id: string;
-  name: string;
-  duration: number;
-  frameCount: number;
-  data: MotionData[];
-  createdAt: string;
+  user_id: string;
+  room_id: string;
+  model_id?: string;
+  is_active: boolean;
+  created_at: string;
+  ended_at?: string;
 }
 
-// 3D Model Types
-export interface Model3D {
+export interface UsageStats {
   id: string;
-  name: string;
-  url: string;
-  type: 'fbx' | 'glb' | 'gltf';
-  uploadedAt: string;
+  user_id: string;
+  action_type: 'recording' | 'export' | 'upload';
+  duration?: number;
+  file_size?: number;
+  created_at: string;
 }
 
-// Camera Types
-export interface CameraSource {
+export interface Payment {
   id: string;
-  type: 'webcam' | 'mobile';
-  deviceId?: string;
-  label?: string;
-  stream?: MediaStream | null;
-  isActive: boolean;
-}
-
-// Subscription Types
-export interface Subscription {
-  id: string;
-  userId: string;
-  plan: 'free' | 'basic' | 'pro';
-  status: 'active' | 'cancelled' | 'expired';
-  currentPeriodEnd: string;
-}
-
-export interface SubscriptionPlan {
-  id: string;
-  name: string;
-  price: number;
-  features: string[];
-  stripePriceId: string;
-}
-
-// WebRTC Types
-export interface PeerConnection {
-  id: string;
-  connection: RTCPeerConnection;
-  stream?: MediaStream;
-}
-
-// Store Types
-export interface MotionCaptureStore {
-  isCapturing: boolean;
-  recordedMotions: RecordedMotion[];
-  currentMotion: MotionData[];
-  cameras: CameraSource[];
-  startCapture: () => void;
-  stopCapture: () => void;
-  startRecording: () => void;
-  stopRecording: () => void;
-  addMotionData: (data: MotionData) => void;
-  clearMotionData: () => void;
-}
-
-export interface ModelStore {
-  currentModel: Model3D | null;
-  models: Model3D[];
-  uploadModel: (file: File) => Promise<void>;
-  loadModel: (modelId: string) => Promise<void>;
-  removeModel: (modelId: string) => Promise<void>;
+  user_id: string;
+  stripe_payment_id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  created_at: string;
 }

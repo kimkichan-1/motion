@@ -1,73 +1,114 @@
 import { create } from 'zustand';
-import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { Profile } from '../types';
+import type { User } from '@supabase/supabase-js';
 
-interface AuthStore {
+interface AuthState {
   user: User | null;
-  isLoading: boolean;
-  isAuthenticated: boolean;
-  initialize: () => Promise<void>;
+  profile: Profile | null;
+  loading: boolean;
+  signUp: (email: string, password: string, fullName: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, metadata?: any) => Promise<void>;
   signOut: () => Promise<void>;
-  setUser: (user: User | null) => void;
+  fetchProfile: () => Promise<void>;
+  updateProfile: (updates: Partial<Profile>) => Promise<void>;
 }
 
-export const useAuthStore = create<AuthStore>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
-  isLoading: true,
-  isAuthenticated: false,
+  profile: null,
+  loading: true,
 
-  initialize: async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      set({
-        user: session?.user ?? null,
-        isAuthenticated: !!session,
-        isLoading: false
-      });
-
-      // Listen to auth changes
-      supabase.auth.onAuthStateChange((_event, session) => {
-        set({
-          user: session?.user ?? null,
-          isAuthenticated: !!session
-        });
-      });
-    } catch (error) {
-      console.error('Auth initialization error:', error);
-      set({ isLoading: false });
-    }
-  },
-
-  signIn: async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    if (error) throw error;
-    set({ user: data.user, isAuthenticated: true });
-  },
-
-  signUp: async (email: string, password: string, metadata?: any) => {
+  signUp: async (email, password, fullName) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: metadata,
-      },
+        data: {
+          full_name: fullName
+        }
+      }
     });
+
     if (error) throw error;
-    set({ user: data.user, isAuthenticated: !!data.user });
+
+    if (data.user) {
+      set({ user: data.user });
+      await get().fetchProfile();
+    }
+  },
+
+  signIn: async (email, password) => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (error) throw error;
+
+    if (data.user) {
+      set({ user: data.user });
+      await get().fetchProfile();
+    }
   },
 
   signOut: async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
-    set({ user: null, isAuthenticated: false });
+    set({ user: null, profile: null });
   },
 
-  setUser: (user: User | null) => {
-    set({ user, isAuthenticated: !!user });
+  fetchProfile: async () => {
+    const { user } = get();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+
+    if (error) {
+      console.error('Error fetching profile:', error);
+      return;
+    }
+
+    set({ profile: data as Profile });
   },
+
+  updateProfile: async (updates) => {
+    const { user } = get();
+    if (!user) throw new Error('Not authenticated');
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', user.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    set({ profile: data as Profile });
+  }
 }));
+
+// Initialize auth state
+supabase.auth.getSession().then(({ data: { session } }) => {
+  if (session?.user) {
+    useAuthStore.setState({ user: session.user, loading: false });
+    useAuthStore.getState().fetchProfile();
+  } else {
+    useAuthStore.setState({ loading: false });
+  }
+});
+
+// Listen for auth changes
+supabase.auth.onAuthStateChange((_event, session) => {
+  if (session?.user) {
+    useAuthStore.setState({ user: session.user });
+    useAuthStore.getState().fetchProfile();
+  } else {
+    useAuthStore.setState({ user: null, profile: null });
+  }
+});

@@ -2,67 +2,62 @@ import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 
 export default function Home() {
-  const { isAuthenticated } = useAuthStore();
+  const { user } = useAuthStore();
 
   return (
-    <div className="py-12">
-      <div className="max-w-4xl mx-auto text-center">
-        <h1 className="text-5xl font-bold text-gray-900 mb-6">
-          Real-time Motion Capture Platform
-        </h1>
-        <p className="text-xl text-gray-600 mb-8">
-          Create stunning 3D animations with real-time motion capture using your webcam
-        </p>
+    <div className="min-h-screen bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500">
+      <div className="container mx-auto px-4 py-16">
+        <div className="text-center text-white">
+          <h1 className="text-6xl font-bold mb-6">Real-Time Motion Capture</h1>
+          <p className="text-2xl mb-12">
+            Professional motion capture for your 3D models using just your camera
+          </p>
 
-        <div className="space-x-4">
-          {isAuthenticated ? (
-            <Link
-              to="/capture"
-              className="inline-block bg-indigo-600 text-white px-8 py-3 rounded-lg text-lg font-medium hover:bg-indigo-700"
-            >
-              Start Capturing
-            </Link>
-          ) : (
-            <>
+          <div className="flex justify-center gap-6 mb-16">
+            {user ? (
               <Link
-                to="/register"
-                className="inline-block bg-indigo-600 text-white px-8 py-3 rounded-lg text-lg font-medium hover:bg-indigo-700"
+                to="/capture"
+                className="bg-white text-purple-600 px-8 py-4 rounded-full text-xl font-semibold hover:bg-gray-100 transition"
               >
-                Get Started
-            </Link>
-              <Link
-                to="/login"
-                className="inline-block bg-gray-200 text-gray-800 px-8 py-3 rounded-lg text-lg font-medium hover:bg-gray-300"
-              >
-                Sign In
+                Start Capturing
               </Link>
-            </>
-          )}
-        </div>
-
-        <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <div className="text-4xl mb-4">📹</div>
-            <h3 className="text-xl font-semibold mb-2">Real-time Capture</h3>
-            <p className="text-gray-600">
-              Use your webcam to capture body movements in real-time with MediaPipe
-            </p>
+            ) : (
+              <>
+                <Link
+                  to="/register"
+                  className="bg-white text-purple-600 px-8 py-4 rounded-full text-xl font-semibold hover:bg-gray-100 transition"
+                >
+                  Get Started
+                </Link>
+                <Link
+                  to="/login"
+                  className="bg-transparent border-2 border-white px-8 py-4 rounded-full text-xl font-semibold hover:bg-white hover:text-purple-600 transition"
+                >
+                  Login
+                </Link>
+              </>
+            )}
           </div>
 
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <div className="text-4xl mb-4">🎭</div>
-            <h3 className="text-xl font-semibold mb-2">3D Animation</h3>
-            <p className="text-gray-600">
-              Upload FBX/GLB models and apply your motion capture data instantly
-            </p>
-          </div>
-
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <div className="text-4xl mb-4">💾</div>
-            <h3 className="text-xl font-semibold mb-2">Export & Save</h3>
-            <p className="text-gray-600">
-              Record, save, and export your animations with motion data included
-            </p>
+          <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+            <div className="bg-white/10 backdrop-blur-lg p-8 rounded-xl">
+              <h3 className="text-2xl font-bold mb-4">Real-Time Tracking</h3>
+              <p className="text-lg">
+                See your movements applied to your 3D models instantly with MediaPipe technology
+              </p>
+            </div>
+            <div className="bg-white/10 backdrop-blur-lg p-8 rounded-xl">
+              <h3 className="text-2xl font-bold mb-4">Multi-Camera Support</h3>
+              <p className="text-lg">
+                Use your laptop and mobile simultaneously for more accurate captures
+              </p>
+            </div>
+            <div className="bg-white/10 backdrop-blur-lg p-8 rounded-xl">
+              <h3 className="text-2xl font-bold mb-4">Export & Save</h3>
+              <p className="text-lg">
+                Record your motions and export them in popular formats like FBX
+              </p>
+            </div>
           </div>
         </div>
       </div>
