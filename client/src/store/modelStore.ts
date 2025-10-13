@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
-import { Model } from '../types';
+import type { Model } from '../types/index';
 
 interface ModelState {
   models: Model[];

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
-import { Recording, PoseFrame } from '../types';
+import type { Recording, PoseFrame } from '../types/index';
 
 interface MotionState {
   recordings: Recording[];

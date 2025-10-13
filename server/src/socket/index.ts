@@ -61,21 +61,21 @@ export function setupSocketHandlers(io: Server) {
     });
 
     // WebRTC signaling for video streaming
-    socket.on('offer', (data: { roomId: string; offer: RTCSessionDescriptionInit }) => {
+    socket.on('offer', (data: { roomId: string; offer: any }) => {
       socket.to(data.roomId).emit('offer', {
         userId: socket.id,
         offer: data.offer
       });
     });
 
-    socket.on('answer', (data: { roomId: string; answer: RTCSessionDescriptionInit }) => {
+    socket.on('answer', (data: { roomId: string; answer: any }) => {
       socket.to(data.roomId).emit('answer', {
         userId: socket.id,
         answer: data.answer
       });
     });
 
-    socket.on('ice-candidate', (data: { roomId: string; candidate: RTCIceCandidate }) => {
+    socket.on('ice-candidate', (data: { roomId: string; candidate: any }) => {
       socket.to(data.roomId).emit('ice-candidate', {
         userId: socket.id,
         candidate: data.candidate
