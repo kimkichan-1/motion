@@ -1,17 +1,25 @@
-import { Suspense, useEffect, useRef } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, useGLTF, useFBX, Center } from '@react-three/drei';
 import * as THREE from 'three';
 import { useModelStore } from '../../store/modelStore';
+import { getSkeletonFromModel, detectBoneMapping } from '../../utils/motionRetargeting';
+import { applyPoseDirectMapping } from '../../utils/poseMapping';
+import type { PoseFrame } from '../../types/index';
+import type { MappingConfig } from './BoneMappingControls';
 
 interface ModelProps {
   url: string;
   fileType: 'fbx' | 'glb' | 'gltf';
-  poseData?: any;
+  poseData?: PoseFrame;
+  mappingConfig: MappingConfig;
 }
 
-function Model({ url, fileType, poseData }: ModelProps) {
+function Model({ url, fileType, poseData, mappingConfig }: ModelProps) {
   const modelRef = useRef<THREE.Group>(null);
+  const [skeleton, setSkeleton] = useState<THREE.Skeleton | null>(null);
+  const [boneMap, setBoneMap] = useState<Map<string, THREE.Bone> | null>(null);
+  const [showBoneAxes, setShowBoneAxes] = useState(false); // Debug mode
   let model: any = null;
 
   if (fileType === 'fbx') {
@@ -19,6 +27,25 @@ function Model({ url, fileType, poseData }: ModelProps) {
   } else {
     model = useGLTF(url);
   }
+
+  // Add bone axis helpers for debugging
+  useEffect(() => {
+    if (!modelRef.current || !skeleton || !showBoneAxes) return;
+
+    const helpers: THREE.AxesHelper[] = [];
+
+    skeleton.bones.forEach(bone => {
+      const axesHelper = new THREE.AxesHelper(0.1);
+      bone.add(axesHelper);
+      helpers.push(axesHelper);
+    });
+
+    return () => {
+      helpers.forEach(helper => {
+        helper.parent?.remove(helper);
+      });
+    };
+  }, [skeleton, showBoneAxes]);
 
   useEffect(() => {
     if (!modelRef.current) return;
@@ -33,26 +60,33 @@ function Model({ url, fileType, poseData }: ModelProps) {
     // Center the model
     const center = box.getCenter(new THREE.Vector3());
     modelRef.current.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
+
+    // Detect skeleton and bone mapping
+    const detectedSkeleton = getSkeletonFromModel(modelRef.current);
+    if (detectedSkeleton) {
+      setSkeleton(detectedSkeleton);
+
+      // Print all bone names for debugging
+      console.log('===== ALL BONE NAMES IN MODEL =====');
+      detectedSkeleton.bones.forEach((bone, index) => {
+        console.log(`${index}: ${bone.name}`);
+      });
+      console.log('===================================');
+
+      const detectedBoneMap = detectBoneMapping(detectedSkeleton);
+      setBoneMap(detectedBoneMap);
+      console.log('Detected bones:', Array.from(detectedBoneMap.keys()));
+      console.log('Total bones in skeleton:', detectedSkeleton.bones.length);
+    } else {
+      console.warn('No skeleton found in model');
+    }
   }, [model]);
 
   useFrame(() => {
-    if (!modelRef.current || !poseData) return;
+    if (!skeleton || !boneMap || !poseData) return;
 
-    // Apply pose data to model
-    // This is a simplified version - actual retargeting would be more complex
-    if (poseData.landmarks) {
-      // Example: rotate based on pose
-      const shoulderLeft = poseData.landmarks[11];
-      const shoulderRight = poseData.landmarks[12];
-
-      if (shoulderLeft && shoulderRight) {
-        const angle = Math.atan2(
-          shoulderRight.y - shoulderLeft.y,
-          shoulderRight.x - shoulderLeft.x
-        );
-        modelRef.current.rotation.z = angle;
-      }
-    }
+    // Apply pose data to skeleton using direct mapping with config
+    applyPoseDirectMapping(poseData, skeleton, boneMap, mappingConfig);
   });
 
   return (
@@ -72,7 +106,12 @@ function Loader() {
   );
 }
 
-export default function ModelViewer() {
+interface ModelViewerProps {
+  poseData?: PoseFrame;
+  mappingConfig: MappingConfig;
+}
+
+export default function ModelViewer({ poseData, mappingConfig }: ModelViewerProps) {
   const { currentModel } = useModelStore();
 
   if (!currentModel) {
@@ -122,6 +161,8 @@ export default function ModelViewer() {
           <Model
             url={currentModel.file_url}
             fileType={currentModel.file_type}
+            poseData={poseData}
+            mappingConfig={mappingConfig}
           />
         </Suspense>
       </Canvas>

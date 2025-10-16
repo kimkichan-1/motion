@@ -4,7 +4,10 @@ import { useMotionStore } from '../../store/motionStore';
 import { useAuthStore } from '../../store/authStore';
 import VideoFeed from '../../components/viewer/VideoFeed';
 import ModelViewer from '../../components/viewer/ModelViewer';
+import BoneMappingControls, { defaultConfig, type MappingConfig } from '../../components/viewer/BoneMappingControls';
+import { calibrateFromTPose, isValidTPose } from '../../utils/calibration';
 import { QRCodeSVG } from 'qrcode.react';
+import type { PoseFrame } from '../../types/index';
 
 export default function Capture() {
   const { user, signOut } = useAuthStore();
@@ -14,10 +17,42 @@ export default function Capture() {
   const [uploading, setUploading] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [roomId] = useState(() => Math.random().toString(36).substring(7));
+  const [currentPose, setCurrentPose] = useState<PoseFrame | undefined>(undefined);
+  const [mappingConfig, setMappingConfig] = useState<MappingConfig>(defaultConfig);
+  const [calibrationStatus, setCalibrationStatus] = useState<string>('');
 
   useEffect(() => {
     fetchModels();
   }, []);
+
+  // Check T-pose validity in real-time
+  useEffect(() => {
+    if (currentPose) {
+      const { valid, message } = isValidTPose(currentPose);
+      setCalibrationStatus(message);
+    }
+  }, [currentPose]);
+
+  const handleCalibrate = () => {
+    if (!currentPose) {
+      alert('포즈 데이터를 기다리는 중...');
+      return;
+    }
+
+    const { valid, message } = isValidTPose(currentPose);
+    if (!valid) {
+      alert(`캘리브레이션 실패: ${message}`);
+      return;
+    }
+
+    try {
+      const newConfig = calibrateFromTPose(currentPose);
+      setMappingConfig(newConfig);
+      alert('✅ T-pose 캘리브레이션 완료!');
+    } catch (error: any) {
+      alert(`캘리브레이션 오류: ${error.message}`);
+    }
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -159,13 +194,69 @@ export default function Capture() {
             {/* Camera Feed */}
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-xl font-bold mb-4">Camera Feed</h2>
-              <VideoFeed />
+              <VideoFeed onPoseData={setCurrentPose} />
             </div>
 
             {/* 3D Model Viewer */}
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-xl font-bold mb-4">3D Model Preview</h2>
-              <ModelViewer />
+              <ModelViewer poseData={currentPose} mappingConfig={mappingConfig} />
+            </div>
+
+            {/* T-Pose Calibration */}
+            <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg shadow p-6 border-2 border-blue-200">
+              <h2 className="text-xl font-bold mb-3 text-blue-900">🎯 T-pose 캘리브레이션</h2>
+              <p className="text-sm text-gray-700 mb-3">
+                T자 포즈를 취하고 캘리브레이션 버튼을 눌러 자동으로 본 매핑을 설정하세요
+              </p>
+
+              {/* Status Indicator */}
+              <div className={`mb-4 p-3 rounded ${
+                calibrationStatus.includes('준비')
+                  ? 'bg-green-100 border border-green-300'
+                  : 'bg-yellow-100 border border-yellow-300'
+              }`}>
+                <p className="text-sm font-medium">
+                  {calibrationStatus || 'T-pose를 취해주세요...'}
+                </p>
+              </div>
+
+              {/* Instructions */}
+              <div className="bg-white rounded p-3 mb-4">
+                <p className="text-xs font-semibold text-gray-700 mb-2">T-pose 자세:</p>
+                <ol className="text-xs text-gray-600 space-y-1 list-decimal list-inside">
+                  <li>똑바로 서세요</li>
+                  <li>양팔을 수평으로 쭉 펴세요 (T자)</li>
+                  <li>다리는 어깨 너비로 벌리세요</li>
+                  <li>전체 몸이 카메라에 보이도록 하세요</li>
+                </ol>
+              </div>
+
+              {/* Calibrate Button */}
+              <button
+                onClick={handleCalibrate}
+                disabled={!calibrationStatus.includes('준비')}
+                className={`w-full py-3 px-4 rounded-lg font-semibold text-white transition ${
+                  calibrationStatus.includes('준비')
+                    ? 'bg-blue-600 hover:bg-blue-700'
+                    : 'bg-gray-400 cursor-not-allowed'
+                }`}
+              >
+                {calibrationStatus.includes('준비') ? '✨ 지금 캘리브레이션!' : '⏳ T-pose를 취해주세요'}
+              </button>
+            </div>
+
+            {/* Manual Bone Mapping Controls */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-bold mb-4">수동 본 매핑 조정</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                T-pose 캘리브레이션이 완벽하지 않다면 수동으로 미세 조정하세요
+              </p>
+              <BoneMappingControls
+                config={mappingConfig}
+                onChange={setMappingConfig}
+                onReset={() => setMappingConfig(defaultConfig)}
+              />
             </div>
 
             {/* Recording Controls */}
